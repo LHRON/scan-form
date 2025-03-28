@@ -115,8 +115,13 @@
     function startCamera() {
       const video = document.getElementById('video');
       navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then((stream) => { video.srcObject = stream; })
-        .catch((err) => { console.error("Camera error:", err); });
+        .then((stream) => { 
+          video.srcObject = stream;
+          video.play(); // ✅ 加上這一行})
+        .catch((err) => { 
+          console.error("Camera error:", err); 
+          alert("無法開啟相機，請確認瀏覽器權限允許。錯誤：" + err.message);
+      });
     }
 
     document.getElementById('codeForm').addEventListener('submit', async (e) => {
