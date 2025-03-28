@@ -51,7 +51,6 @@
         <video id="video" autoplay playsinline></video>
         <div class="scan-box"></div>
       </div>
-      <button id="scanButton" onclick="scanText(event)">掃描畫面文字</button>
     </div>
     <form id="codeForm" style="display: none;">
       <div class="form-group">
@@ -74,7 +73,7 @@
     let gapiInited = false;
     let gisInited = false;
     let streamRef = null;
-    let lastScanTime = 0;
+    let scanInterval = null;
 
     function gapiLoaded() {
       gapi.load('client', initializeGapiClient);
@@ -118,46 +117,33 @@
 
     function startCamera() {
       const video = document.getElementById('video');
-      video.style.display = 'block';
-      navigator.mediaDevices.enumerateDevices()
-        .then(devices => {
-          const externalCamera = devices.find(device => device.kind === 'videoinput' && device.label.toLowerCase().includes('usb'));
-          return navigator.mediaDevices.getUserMedia({
-            video: externalCamera ? { deviceId: { exact: externalCamera.deviceId } } : true
-          });
-        })
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
         .then((stream) => {
           streamRef = stream;
           video.srcObject = stream;
           video.play();
+          startAutoScan();
         })
         .catch((err) => {
           console.error("Camera error:", err);
-          alert("無法啟用相機，請確認已連接外接鏡頭並允許使用\n\n錯誤訊息: " + err.message);
+          alert("無法啟用相機，請確認權限或裝置連接。\n錯誤訊息: " + err.message);
         });
     }
 
     function stopCamera() {
-      const video = document.getElementById('video');
       if (streamRef) {
         streamRef.getTracks().forEach(track => track.stop());
         streamRef = null;
       }
-      video.srcObject = null;
+      document.getElementById('video').srcObject = null;
     }
 
-    async function scanText(event) {
-      const button = event.target;
-      const now = Date.now();
-      if (now - lastScanTime < 3000) {
-        alert("請稍候幾秒再掃描");
-        return;
-      }
-      lastScanTime = now;
+    function startAutoScan() {
+      if (scanInterval) clearInterval(scanInterval);
+      scanInterval = setInterval(scanTextAuto, 2500);
+    }
 
-      button.disabled = true;
-      button.textContent = '掃描中...';
-
+    async function scanTextAuto() {
       const video = document.getElementById('video');
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
@@ -169,20 +155,15 @@
         const { data: { text } } = await Tesseract.recognize(canvas, 'jpn', {
           tessedit_char_whitelist: '0123456789-'
         });
-        console.log("OCR result:", text);
         const match = text.match(/[0-9]{3}-[0-9]{5}/);
         if (match) {
+          clearInterval(scanInterval);
+          stopCamera();
           document.getElementById('code').value = match[0];
           document.getElementById('codeForm').style.display = 'block';
-          stopCamera();
-        } else {
-          alert("未偵測到有效掃描碼格式（000-00000）");
         }
       } catch (err) {
-        alert("OCR 掃描失敗：" + err.message);
-      } finally {
-        button.disabled = false;
-        button.textContent = '掃描畫面文字';
+        console.error("OCR 掃描錯誤：", err);
       }
     }
 
@@ -210,6 +191,8 @@
           messageDiv.style.display = 'block';
           messageDiv.className = 'error';
           messageDiv.textContent = '此掃描碼已存在，請勿重複提交。';
+          document.getElementById('codeForm').style.display = 'none';
+          startCamera();
           return;
         }
 
