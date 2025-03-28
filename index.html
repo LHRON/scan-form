@@ -11,7 +11,9 @@
     body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
     .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
     h1 { color: #333; text-align: center; }
-    #videoWrapper { position: relative; }
+    #videoWrapper {
+      position: relative;
+    }
     video {
       width: 100%;
       height: 180px;
@@ -51,6 +53,7 @@
         <video id="video" autoplay playsinline></video>
         <div class="scan-box"></div>
       </div>
+      <button id="scanButton" onclick="scanText(event)">掃描畫面文字</button>
     </div>
     <form id="codeForm" style="display: none;">
       <div class="form-group">
@@ -72,8 +75,6 @@
     let tokenClient;
     let gapiInited = false;
     let gisInited = false;
-    let streamRef = null;
-    let scanInterval = null;
 
     function gapiLoaded() {
       gapi.load('client', initializeGapiClient);
@@ -117,33 +118,30 @@
 
     function startCamera() {
       const video = document.getElementById('video');
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then((stream) => {
-          streamRef = stream;
-          video.srcObject = stream;
-          video.play();
-          startAutoScan();
-        })
-        .catch((err) => {
-          console.error("Camera error:", err);
-          alert("無法啟用相機，請確認權限或裝置連接。\n錯誤訊息: " + err.message);
-        });
+      video.style.display = 'block';
+      video.setAttribute('playsinline', true);
+      navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      })
+      .then((stream) => {
+        video.srcObject = stream;
+        video.play();
+      })
+      .catch((err) => {
+        console.error("Camera error:", err);
+        alert("無法啟用相機，請確認手機已啟用相機權限\n\n錯誤訊息: " + err.message);
+      });
     }
 
-    function stopCamera() {
-      if (streamRef) {
-        streamRef.getTracks().forEach(track => track.stop());
-        streamRef = null;
-      }
-      document.getElementById('video').srcObject = null;
-    }
+    async function scanText(event) {
+      const button = event.target;
+      button.disabled = true;
+      button.textContent = '掃描中...';
 
-    function startAutoScan() {
-      if (scanInterval) clearInterval(scanInterval);
-      scanInterval = setInterval(scanTextAuto, 2500);
-    }
-
-    async function scanTextAuto() {
       const video = document.getElementById('video');
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
@@ -152,18 +150,21 @@
       ctx.drawImage(video, 0, 0);
 
       try {
-        const { data: { text } } = await Tesseract.recognize(canvas, 'jpn', {
-          tessedit_char_whitelist: '0123456789-'
-        });
+        const { data: { text } } = await Tesseract.recognize(canvas, 'chi_sim+eng');
+        console.log("OCR result:", text);
         const match = text.match(/[0-9]{3}-[0-9]{5}/);
         if (match) {
-          clearInterval(scanInterval);
-          stopCamera();
           document.getElementById('code').value = match[0];
           document.getElementById('codeForm').style.display = 'block';
+        } else {
+          alert("未偵測到有效掃描碼格式（000-00000）");
         }
       } catch (err) {
-        console.error("OCR 掃描錯誤：", err);
+        alert("OCR 掃描失敗：" + err.message);
+      } finally {
+        video.play();
+        button.disabled = false;
+        button.textContent = '掃描畫面文字';
       }
     }
 
@@ -191,8 +192,6 @@
           messageDiv.style.display = 'block';
           messageDiv.className = 'error';
           messageDiv.textContent = '此掃描碼已存在，請勿重複提交。';
-          document.getElementById('codeForm').style.display = 'none';
-          startCamera();
           return;
         }
 
@@ -208,7 +207,7 @@
         messageDiv.textContent = '提交成功！';
         document.getElementById('code').value = '';
         document.getElementById('codeForm').style.display = 'none';
-        startCamera();
+
       } catch (error) {
         console.error("Submit Error:", error);
         messageDiv.style.display = 'block';
