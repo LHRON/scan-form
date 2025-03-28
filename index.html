@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>掃描碼輸入</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
+    .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { color: #333; text-align: center; }
+    video { width: 100%; border-radius: 8px; margin-bottom: 10px; }
+    .form-group { margin-bottom: 15px; }
+    input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+    button { background-color: #4CAF50; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; margin-bottom: 10px; }
+    button:hover { background-color: #45a049; }
+    #message { margin-top: 15px; padding: 10px; border-radius: 4px; display: none; }
+    .success { background-color: #dff0d8; color: #3c763d; }
+    .error { background-color: #f2dede; color: #a94442; }
+    #loginButton { background-color: #4285f4; }
+    #loginButton:hover { background-color: #357abd; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>掃描碼輸入</h1>
+    <button id="loginButton" onclick="handleAuthClick()">登入 Google</button>
+    <div id="scanner" style="display: none;">
+      <video id="video" autoplay></video>
+      <button onclick="scanText()">掃描畫面文字</button>
+    </div>
+    <form id="codeForm" style="display: none;">
+      <div class="form-group">
+        <label for="code">掃描碼 (000-00000)</label>
+        <input type="text" id="code" name="code" pattern="[0-9]{3}-[0-9]{5}" required>
+      </div>
+      <button type="submit">確認</button>
+    </form>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    const SPREADSHEET_ID = '1OAB4MQTjx3QFHmIOQkwK2MDZS5eLfwRh7neognL_ad8';
+    const API_KEY = 'AIzaSyA9lst1FXN7HtN2gu73p0cte84ifPmRN00';
+    const CLIENT_ID = '1092599335841-mdnkb4pa7tjoi512sqhv1o23hig6g5n3.apps.googleusercontent.com';
+    const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
+    const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+    let tokenClient;
+    let gapiInited = false;
+    let gisInited = false;
+
+    function gapiLoaded() {
+      gapi.load('client', initializeGapiClient);
+    }
+
+    async function initializeGapiClient() {
+      await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
+      gapiInited = true;
+      maybeEnableButtons();
+    }
+
+    function gisLoaded() {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: '',
+      });
+      gisInited = true;
+      maybeEnableButtons();
+    }
+
+    function maybeEnableButtons() {
+      if (gapiInited && gisInited) {
+        document.getElementById('loginButton').style.display = 'block';
+        document.getElementById('codeForm').style.display = 'none';
+      }
+    }
+
+    function handleAuthClick() {
+      tokenClient.callback = async (resp) => {
+        if (resp.error !== undefined) {
+          console.error('授權錯誤:', resp);
+          return;
+        }
+        gapi.client.setToken({ access_token: resp.access_token });
+        document.getElementById('loginButton').style.display = 'none';
+        document.getElementById('scanner').style.display = 'block';
+        startCamera();
+      };
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    }
+
+    async function scanText() {
+      const video = document.getElementById('video');
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+
+      const { data: { text } } = await Tesseract.recognize(canvas, 'chi_sim+eng');
+      console.log("OCR result:", text);
+      const match = text.match(/[0-9]{3}-[0-9]{5}/);
+      if (match) {
+        document.getElementById('code').value = match[0];
+        document.getElementById('codeForm').style.display = 'block';
+      } else {
+        alert("未偵測到有效掃描碼格式（000-00000）");
+      }
+    }
+
+    function startCamera() {
+      const video = document.getElementById('video');
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then((stream) => { video.srcObject = stream; })
+        .catch((err) => { console.error("Camera error:", err); });
+    }
+
+    document.getElementById('codeForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = document.getElementById('code').value.trim();
+      const messageDiv = document.getElementById('message');
+
+      if (!code) {
+        messageDiv.style.display = 'block';
+        messageDiv.className = 'error';
+        messageDiv.textContent = '請輸入有效的掃描碼';
+        return;
+      }
+
+      try {
+        const getResponse = await gapi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Sheet1!A:A',
+        });
+
+        const existingCodes = getResponse.result.values?.flat() || [];
+
+        if (existingCodes.includes(code)) {
+          messageDiv.style.display = 'block';
+          messageDiv.className = 'error';
+          messageDiv.textContent = '此掃描碼已存在，請勿重複提交。';
+          return;
+        }
+
+        await gapi.client.sheets.spreadsheets.values.append({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Sheet1!A:A',
+          valueInputOption: 'RAW',
+          resource: { values: [[code]] },
+        });
+
+        messageDiv.style.display = 'block';
+        messageDiv.className = 'success';
+        messageDiv.textContent = '提交成功！';
+        document.getElementById('code').value = '';
+        document.getElementById('codeForm').style.display = 'none';
+
+      } catch (error) {
+        console.error("錯誤內容：", error);
+        messageDiv.style.display = 'block';
+        messageDiv.className = 'error';
+        messageDiv.textContent = '提交失敗：' + (error.result?.error?.message || '請再試一次。');
+      }
+    });
+  </script>
+
+  <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+  <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
