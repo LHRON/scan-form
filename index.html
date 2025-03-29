@@ -4,32 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>掃描碼輸入</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://accounts.google.com/gsi/client"></script>
   <style>
     body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
-    .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
+    .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     h1 { color: #333; text-align: center; }
-    #videoWrapper { position: relative; }
-    video {
-      width: 100%;
-      height: 180px;
-      object-fit: cover;
-      background-color: black;
-      border-radius: 8px;
-      margin-bottom: 10px;
-    }
-    .scan-box {
-      position: absolute;
-      top: 60px;
-      left: 10%;
-      width: 80%;
-      height: 60px;
-      border: 2px dashed red;
-      border-radius: 8px;
-      pointer-events: none;
-    }
     .form-group { margin-bottom: 15px; }
     input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
     button { background-color: #4CAF50; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; margin-bottom: 10px; }
@@ -45,13 +25,6 @@
   <div class="container">
     <h1>掃描碼輸入</h1>
     <button id="loginButton" onclick="handleAuthClick()">登入 Google</button>
-    <div id="scanner" style="display: none;">
-      <div id="videoWrapper">
-        <video id="video" autoplay playsinline></video>
-        <div class="scan-box"></div>
-      </div>
-      <button id="scanButton" onclick="scanTextManual()">掃描畫面文字</button>
-    </div>
     <form id="codeForm" style="display: none;">
       <div class="form-group">
         <label for="code">掃描碼 (000-00000)</label>
@@ -72,9 +45,11 @@
     let tokenClient;
     let gapiInited = false;
     let gisInited = false;
-    let streamRef = null;
 
-    function gapiLoaded() { gapi.load('client', initializeGapiClient); }
+    function gapiLoaded() {
+      gapi.load('client', initializeGapiClient);
+    }
+
     async function initializeGapiClient() {
       await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
       gapiInited = true;
@@ -102,55 +77,9 @@
         if (resp.error !== undefined) return;
         gapi.client.setToken({ access_token: resp.access_token });
         document.getElementById('loginButton').style.display = 'none';
-        document.getElementById('scanner').style.display = 'block';
-        startCamera();
+        document.getElementById('codeForm').style.display = 'block';
       };
       tokenClient.requestAccessToken({ prompt: 'consent' });
-    }
-
-    function startCamera() {
-      const video = document.getElementById('video');
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then(stream => {
-          streamRef = stream;
-          video.srcObject = stream;
-        }).catch(err => alert("相機開啟失敗：" + err.message));
-    }
-
-    function getScanCanvas() {
-      const video = document.getElementById('video');
-      const canvas = document.createElement('canvas');
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      const sx = vw * 0.1;
-      const sy = vh * 0.33;
-      const sw = vw * 0.8;
-      const sh = vh * 0.2;
-      canvas.width = sw;
-      canvas.height = sh;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-      const imgData = ctx.getImageData(0, 0, sw, sh);
-      for (let i = 0; i < imgData.data.length; i += 4) {
-        let avg = (imgData.data[i] + imgData.data[i+1] + imgData.data[i+2]) / 3;
-        imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = avg > 150 ? 255 : 0;
-      }
-      ctx.putImageData(imgData, 0, 0);
-      return canvas;
-    }
-
-    async function scanTextManual() {
-      const canvas = getScanCanvas();
-      const { data: { text } } = await Tesseract.recognize(canvas, 'eng+jpn', {
-        tessedit_char_whitelist: '0123456789-'
-      });
-      const match = text.match(/[0-9]{3}-[0-9]{5}/);
-      if (match) {
-        document.getElementById('code').value = match[0];
-        document.getElementById('codeForm').style.display = 'block';
-      } else {
-        alert("未偵測到有效掃描碼格式（000-00000）");
-      }
     }
 
     document.getElementById('codeForm').addEventListener('submit', async (e) => {
@@ -176,7 +105,7 @@
       messageDiv.style.display = 'block';
       messageDiv.className = 'success';
       messageDiv.textContent = '提交成功！';
-      document.getElementById('codeForm').style.display = 'none';
+      document.getElementById('codeForm').reset();
     });
   </script>
 
