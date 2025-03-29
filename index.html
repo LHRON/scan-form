@@ -7,7 +7,7 @@
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://accounts.google.com/gsi/client"></script>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
     .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     h1 { color: #333; text-align: center; }
     .form-group { margin-bottom: 15px; }
@@ -19,20 +19,38 @@
     .error { background-color: #f2dede; color: #a94442; }
     #loginButton { background-color: #4285f4; }
     #loginButton:hover { background-color: #357abd; }
+    .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+    .form-box, .table-box { flex: 1 1 300px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+    th { background-color: #f0f0f0; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>掃描碼輸入</h1>
     <button id="loginButton" onclick="handleAuthClick()">登入 Google</button>
-    <form id="codeForm" style="display: none;">
-      <div class="form-group">
-        <label for="code">掃描碼 (000-00000)</label>
-        <input type="text" id="code" name="code" pattern="[0-9]{3}-[0-9]{5}" required>
+    <div class="layout" style="display:none;" id="mainLayout">
+      <div class="form-box">
+        <form id="codeForm">
+          <div class="form-group">
+            <label for="code">掃描碼 (000-00000)</label>
+            <input type="text" id="code" name="code" pattern="[0-9]{3}-[0-9]{5}" required>
+          </div>
+          <button type="submit">確認</button>
+        </form>
+        <div id="message"></div>
       </div>
-      <button type="submit">確認</button>
-    </form>
-    <div id="message"></div>
+      <div class="table-box">
+        <h3>歷史登入記錄</h3>
+        <table id="historyTable">
+          <thead>
+            <tr><th>受付番号</th><th>號碼</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -77,9 +95,24 @@
         if (resp.error !== undefined) return;
         gapi.client.setToken({ access_token: resp.access_token });
         document.getElementById('loginButton').style.display = 'none';
-        document.getElementById('codeForm').style.display = 'block';
+        document.getElementById('mainLayout').style.display = 'flex';
+        await loadHistory();
       };
       tokenClient.requestAccessToken({ prompt: 'consent' });
+    }
+
+    async function loadHistory() {
+      const response = await gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID, range: 'Sheet1!A:A',
+      });
+      const values = response.result.values || [];
+      const tableBody = document.getElementById('historyTable').querySelector('tbody');
+      tableBody.innerHTML = '';
+      values.forEach((row, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i + 1}</td><td>${row[0]}</td>`;
+        tableBody.appendChild(tr);
+      });
     }
 
     document.getElementById('codeForm').addEventListener('submit', async (e) => {
@@ -106,6 +139,7 @@
       messageDiv.className = 'success';
       messageDiv.textContent = '提交成功！';
       document.getElementById('codeForm').reset();
+      await loadHistory();
     });
   </script>
 
