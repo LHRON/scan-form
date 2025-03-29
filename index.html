@@ -9,14 +9,27 @@
   <script src="https://accounts.google.com/gsi/client"></script>
   <style>
     body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
-    .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
     h1 { color: #333; text-align: center; }
+    #videoWrapper { position: relative; }
     video {
       width: 100%;
-      min-height: 300px;
+      height: 180px;
+      object-fit: cover;
       background-color: black;
       border-radius: 8px;
       margin-bottom: 10px;
+    }
+    .scan-box {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80%;
+      height: 60px;
+      border: 2px dashed red;
+      border-radius: 8px;
+      pointer-events: none;
     }
     .form-group { margin-bottom: 15px; }
     input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
@@ -34,8 +47,11 @@
     <h1>掃描碼輸入</h1>
     <button id="loginButton" onclick="handleAuthClick()">登入 Google</button>
     <div id="scanner" style="display: none;">
-      <video id="video" autoplay playsinline></video>
-      <button onclick="scanText()">掃描畫面文字</button>
+      <div id="videoWrapper">
+        <video id="video" autoplay playsinline></video>
+        <div class="scan-box"></div>
+      </div>
+      <button id="scanButton" onclick="scanTextManual()">掃描畫面文字</button>
     </div>
     <form id="codeForm" style="display: none;">
       <div class="form-group">
@@ -57,10 +73,10 @@
     let tokenClient;
     let gapiInited = false;
     let gisInited = false;
+    let streamRef = null;
+    let scanInterval = null;
 
-    function gapiLoaded() {
-      gapi.load('client', initializeGapiClient);
-    }
+    function gapiLoaded() { gapi.load('client', initializeGapiClient); }
 
     async function initializeGapiClient() {
       await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
@@ -93,6 +109,7 @@
         gapi.client.setToken({ access_token: resp.access_token });
         document.getElementById('loginButton').style.display = 'none';
         document.getElementById('scanner').style.display = 'block';
+        document.getElementById('scanButton').style.display = 'block';
         startCamera();
       };
       tokenClient.requestAccessToken({ prompt: 'consent' });
@@ -100,20 +117,39 @@
 
     function startCamera() {
       const video = document.getElementById('video');
-      video.style.display = 'block';
-      video.setAttribute('playsinline', true);
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         .then((stream) => {
+          streamRef = stream;
           video.srcObject = stream;
           video.play();
+          startAutoScan();
         })
         .catch((err) => {
-          console.error("Camera error:", err);
-          alert("無法啟用相機，請確認手機已啟用相機權限\n\n錯誤訊息: " + err.message);
+          console.error('Camera error:', err);
+          alert('無法啟用相機，請確認權限或裝置連接。\\n錯誤訊息: ' + err.message);
         });
     }
 
-    async function scanText() {
+    function stopCamera() {
+      if (streamRef) {
+        streamRef.getTracks().forEach((track) => track.stop());
+        streamRef = null;
+      }
+      document.getElementById('video').srcObject = null;
+    }
+
+    function startAutoScan() {
+      if (scanInterval) clearInterval(scanInterval);
+      scanInterval = setInterval(scanTextAuto, 4000);
+    }
+
+    async function scanText(canvas) {
+      return await Tesseract.recognize(canvas, 'eng+jpn', {
+        tessedit_char_whitelist: '0123456789-',
+      });
+    }
+
+    async function scanTextAuto() {
       const video = document.getElementById('video');
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
@@ -121,14 +157,40 @@
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0);
 
-      const { data: { text } } = await Tesseract.recognize(canvas, 'chi_sim+eng');
-      console.log("OCR result:", text);
-      const match = text.match(/[0-9]{3}-[0-9]{5}/);
-      if (match) {
-        document.getElementById('code').value = match[0];
-        document.getElementById('codeForm').style.display = 'block';
-      } else {
-        alert("未偵測到有效掃描碼格式（000-00000）");
+      try {
+        const { data: { text } } = await scanText(canvas);
+        const match = text.match(/[0-9]{3}-[0-9]{5}/);
+        if (match) {
+          clearInterval(scanInterval);
+          stopCamera();
+          document.getElementById('code').value = match[0];
+          document.getElementById('codeForm').style.display = 'block';
+        }
+      } catch (err) {
+        console.error('自動掃描失敗：', err);
+      }
+    }
+
+    async function scanTextManual() {
+      const video = document.getElementById('video');
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+
+      try {
+        const { data: { text } } = await scanText(canvas);
+        const match = text.match(/[0-9]{3}-[0-9]{5}/);
+        if (match) {
+          document.getElementById('code').value = match[0];
+          document.getElementById('codeForm').style.display = 'block';
+        } else {
+          alert('未偵測到有效格式 (000-00000)，請再試一次。');
+        }
+      } catch (err) {
+        console.error('手動掃描失敗：', err);
+        alert('手動辨識錯誤，請稍後再試。\\n' + err.message);
       }
     }
 
@@ -156,6 +218,8 @@
           messageDiv.style.display = 'block';
           messageDiv.className = 'error';
           messageDiv.textContent = '此掃描碼已存在，請勿重複提交。';
+          document.getElementById('codeForm').style.display = 'none';
+          startCamera();
           return;
         }
 
@@ -171,9 +235,9 @@
         messageDiv.textContent = '提交成功！';
         document.getElementById('code').value = '';
         document.getElementById('codeForm').style.display = 'none';
-
+        startCamera();
       } catch (error) {
-        console.error("Submit Error:", error);
+        console.error('Submit Error:', error);
         messageDiv.style.display = 'block';
         messageDiv.className = 'error';
         messageDiv.textContent = '提交失敗：' + (error.result?.error?.message || '請再試一次。');
