@@ -45,7 +45,7 @@
         <h3>已登錄記錄</h3>
         <table id="historyTable">
           <thead>
-             <tr><th>受付番号</th><th>罹災証明書番号</th><th>登錄時間</th></tr>
+            <tr><th>受付番号</th><th>罹災証明書番号</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -101,23 +101,21 @@
       tokenClient.requestAccessToken({ prompt: 'consent' });
     }
 
-async function loadHistory() {
-  const response = await gapi.client.sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Sheet1!A:B',
-  });
-  const values = response.result.values || [];
-  const tableBody = document.getElementById('historyTable').querySelector('tbody');
-  tableBody.innerHTML = '';
-
-  values.reverse().forEach((row, i) => {
-    const code = row[0] || '';
-    const time = row[1] || '';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${values.length - i}</td><td>${code}</td><td>${time}</td>`;
-    tableBody.appendChild(tr);
-  });
-}
+      async function loadHistory() {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Sheet1!A:A',
+        });
+        const values = response.result.values || [];
+        const tableBody = document.getElementById('historyTable').querySelector('tbody');
+        tableBody.innerHTML = '';
+      
+        values.reverse().forEach((row, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${values.length - i}</td><td>${row[0]}</td>`;
+          tableBody.appendChild(tr);
+        });
+      }
 
     document.getElementById('codeForm').addEventListener('submit', async (e) => {
       e.preventDefault();
