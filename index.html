@@ -102,20 +102,16 @@
     }
 
       async function loadHistory() {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-          spreadsheetId: SPREADSHEET_ID,
-          range: 'Sheet1!A:A',
-        });
-        const values = response.result.values || [];
-        const tableBody = document.getElementById('historyTable').querySelector('tbody');
-        tableBody.innerHTML = '';
-      
-        values.reverse().forEach((row, i) => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${values.length - i}</td><td>${row[0]}</td>`;
-          tableBody.appendChild(tr);
-        });
-      }
+const now = new Date();
+const jstTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+const timeStr = jstTime.getHours().toString().padStart(2, '0') + ':' + jstTime.getMinutes().toString().padStart(2, '0');
+
+await gapi.client.sheets.spreadsheets.values.append({
+  spreadsheetId: SPREADSHEET_ID,
+  range: 'Sheet1!A:B',
+  valueInputOption: 'RAW',
+  resource: { values: [[code, timeStr]] }
+});
 
     document.getElementById('codeForm').addEventListener('submit', async (e) => {
       e.preventDefault();
