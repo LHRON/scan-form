@@ -23,8 +23,7 @@
     .scan-box {
       position: absolute;
       top: 60px;
-      left: 50%;
-      transform: translateX(-50%);
+      left: 10%;
       width: 80%;
       height: 60px;
       border: 2px dashed red;
@@ -74,10 +73,8 @@
     let gapiInited = false;
     let gisInited = false;
     let streamRef = null;
-    let scanInterval = null;
 
     function gapiLoaded() { gapi.load('client', initializeGapiClient); }
-
     async function initializeGapiClient() {
       await gapi.client.init({ apiKey: API_KEY, discoveryDocs: [DISCOVERY_DOC] });
       gapiInited = true;
@@ -102,14 +99,10 @@
 
     function handleAuthClick() {
       tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) {
-          console.error('Google 登入錯誤:', resp);
-          return;
-        }
+        if (resp.error !== undefined) return;
         gapi.client.setToken({ access_token: resp.access_token });
         document.getElementById('loginButton').style.display = 'none';
         document.getElementById('scanner').style.display = 'block';
-        document.getElementById('scanButton').style.display = 'block';
         startCamera();
       };
       tokenClient.requestAccessToken({ prompt: 'consent' });
@@ -117,80 +110,46 @@
 
     function startCamera() {
       const video = document.getElementById('video');
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        .then((stream) => {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
           streamRef = stream;
           video.srcObject = stream;
-          video.play();
-          startAutoScan();
-        })
-        .catch((err) => {
-          console.error('Camera error:', err);
-          alert('無法啟用相機，請確認權限或裝置連接。\\n錯誤訊息: ' + err.message);
-        });
+        }).catch(err => alert("相機開啟失敗：" + err.message));
     }
 
-    function stopCamera() {
-      if (streamRef) {
-        streamRef.getTracks().forEach((track) => track.stop());
-        streamRef = null;
-      }
-      document.getElementById('video').srcObject = null;
-    }
-
-    function startAutoScan() {
-      if (scanInterval) clearInterval(scanInterval);
-      scanInterval = setInterval(scanTextAuto, 4000);
-    }
-
-    async function scanText(canvas) {
-      return await Tesseract.recognize(canvas, 'eng+jpn', {
-        tessedit_char_whitelist: '0123456789-',
-      });
-    }
-
-    async function scanTextAuto() {
+    function getScanCanvas() {
       const video = document.getElementById('video');
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const sx = vw * 0.1;
+      const sy = vh * 0.33;
+      const sw = vw * 0.8;
+      const sh = vh * 0.2;
+      canvas.width = sw;
+      canvas.height = sh;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0);
-
-      try {
-        const { data: { text } } = await scanText(canvas);
-        const match = text.match(/[0-9]{3}-[0-9]{5}/);
-        if (match) {
-          clearInterval(scanInterval);
-          stopCamera();
-          document.getElementById('code').value = match[0];
-          document.getElementById('codeForm').style.display = 'block';
-        }
-      } catch (err) {
-        console.error('自動掃描失敗：', err);
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+      const imgData = ctx.getImageData(0, 0, sw, sh);
+      for (let i = 0; i < imgData.data.length; i += 4) {
+        let avg = (imgData.data[i] + imgData.data[i+1] + imgData.data[i+2]) / 3;
+        imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = avg > 150 ? 255 : 0;
       }
+      ctx.putImageData(imgData, 0, 0);
+      return canvas;
     }
 
     async function scanTextManual() {
-      const video = document.getElementById('video');
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0);
-
-      try {
-        const { data: { text } } = await scanText(canvas);
-        const match = text.match(/[0-9]{3}-[0-9]{5}/);
-        if (match) {
-          document.getElementById('code').value = match[0];
-          document.getElementById('codeForm').style.display = 'block';
-        } else {
-          alert('未偵測到有效格式 (000-00000)，請再試一次。');
-        }
-      } catch (err) {
-        console.error('手動掃描失敗：', err);
-        alert('手動辨識錯誤，請稍後再試。\\n' + err.message);
+      const canvas = getScanCanvas();
+      const { data: { text } } = await Tesseract.recognize(canvas, 'eng+jpn', {
+        tessedit_char_whitelist: '0123456789-'
+      });
+      const match = text.match(/[0-9]{3}-[0-9]{5}/);
+      if (match) {
+        document.getElementById('code').value = match[0];
+        document.getElementById('codeForm').style.display = 'block';
+      } else {
+        alert("未偵測到有效掃描碼格式（000-00000）");
       }
     }
 
@@ -199,49 +158,25 @@
       const code = document.getElementById('code').value.trim();
       const messageDiv = document.getElementById('message');
 
-      if (!code) {
+      const getResponse = await gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID, range: 'Sheet1!A:A',
+      });
+      const existingCodes = getResponse.result.values?.flat() || [];
+      if (existingCodes.includes(code)) {
         messageDiv.style.display = 'block';
         messageDiv.className = 'error';
-        messageDiv.textContent = '請輸入有效的掃描碼';
+        messageDiv.textContent = '此掃描碼已存在，請勿重複提交。';
         return;
       }
 
-      try {
-        const getResponse = await gapi.client.sheets.spreadsheets.values.get({
-          spreadsheetId: SPREADSHEET_ID,
-          range: 'Sheet1!A:A',
-        });
-
-        const existingCodes = getResponse.result.values?.flat() || [];
-
-        if (existingCodes.includes(code)) {
-          messageDiv.style.display = 'block';
-          messageDiv.className = 'error';
-          messageDiv.textContent = '此掃描碼已存在，請勿重複提交。';
-          document.getElementById('codeForm').style.display = 'none';
-          startCamera();
-          return;
-        }
-
-        await gapi.client.sheets.spreadsheets.values.append({
-          spreadsheetId: SPREADSHEET_ID,
-          range: 'Sheet1!A:A',
-          valueInputOption: 'RAW',
-          resource: { values: [[code]] },
-        });
-
-        messageDiv.style.display = 'block';
-        messageDiv.className = 'success';
-        messageDiv.textContent = '提交成功！';
-        document.getElementById('code').value = '';
-        document.getElementById('codeForm').style.display = 'none';
-        startCamera();
-      } catch (error) {
-        console.error('Submit Error:', error);
-        messageDiv.style.display = 'block';
-        messageDiv.className = 'error';
-        messageDiv.textContent = '提交失敗：' + (error.result?.error?.message || '請再試一次。');
-      }
+      await gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID, range: 'Sheet1!A:A', valueInputOption: 'RAW',
+        resource: { values: [[code]] }
+      });
+      messageDiv.style.display = 'block';
+      messageDiv.className = 'success';
+      messageDiv.textContent = '提交成功！';
+      document.getElementById('codeForm').style.display = 'none';
     });
   </script>
 
