@@ -101,19 +101,21 @@
       tokenClient.requestAccessToken({ prompt: 'consent' });
     }
 
-    async function loadHistory() {
-      const response = await gapi.client.sheets.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID, range: 'Sheet1!A:A',
-      });
-      const values = response.result.values || [];
-      const tableBody = document.getElementById('historyTable').querySelector('tbody');
-      tableBody.innerHTML = '';
-      values.forEach((row, i) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i + 1}</td><td>${row[0]}</td>`;
-        tableBody.appendChild(tr);
-      });
-    }
+      async function loadHistory() {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Sheet1!A:A',
+        });
+        const values = response.result.values || [];
+        const tableBody = document.getElementById('historyTable').querySelector('tbody');
+        tableBody.innerHTML = '';
+      
+        values.reverse().forEach((row, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${values.length - i}</td><td>${row[0]}</td>`;
+          tableBody.appendChild(tr);
+        });
+      }
 
     document.getElementById('codeForm').addEventListener('submit', async (e) => {
       e.preventDefault();
