@@ -13,10 +13,21 @@
     h1 { color: #333; text-align: center; }
     video {
       width: 100%;
-      min-height: 300px;
+      height: 180px;
+      object-fit: cover;
       background-color: black;
       border-radius: 8px;
       margin-bottom: 10px;
+    }
+    .scan-box {
+      position: absolute;
+      top: 60px;
+      left: 10%;
+      width: 80%;
+      height: 60px;
+      border: 2px dashed red;
+      border-radius: 8px;
+      pointer-events: none;
     }
     .form-group { margin-bottom: 15px; }
     input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
