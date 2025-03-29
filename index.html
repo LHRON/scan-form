@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>掃描碼輸入</title>
+  <title>受付系統</title>
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://accounts.google.com/gsi/client"></script>
   <style>
@@ -28,13 +28,13 @@
 </head>
 <body>
   <div class="container">
-    <h1>掃描碼輸入</h1>
+    <h1>受付</h1>
     <button id="loginButton" onclick="handleAuthClick()">登入 Google</button>
     <div class="layout" style="display:none;" id="mainLayout">
       <div class="form-box">
         <form id="codeForm">
           <div class="form-group">
-            <label for="code">掃描碼 (000-00000)</label>
+            <label for="code">番号を入力してください (000-00000)</label>
             <input type="text" id="code" name="code" pattern="[0-9]{3}-[0-9]{5}" required>
           </div>
           <button type="submit">確認</button>
@@ -42,10 +42,10 @@
         <div id="message"></div>
       </div>
       <div class="table-box">
-        <h3>歷史登入記錄</h3>
+        <h3>已受付記錄</h3>
         <table id="historyTable">
           <thead>
-            <tr><th>受付番号</th><th>號碼</th></tr>
+            <tr><th>受付番号</th><th>罹災証明書番号</th></tr>
           </thead>
           <tbody></tbody>
         </table>
